@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>TikTok Crop – Smart Meme Extractor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{--tt-red:#fe2c55;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#000;color:#fff;display:flex;flex-direction:column;min-height:100vh;}
+    header{text-align:center;padding:2rem 1rem 1rem;}
+    h1{font-size:2.2rem;letter-spacing:1px;color:var(--tt-red);}
+    p{margin-top:.3rem;opacity:.7;}
+    #dropZone{flex:1;display:grid;place-content:center;border:2px dashed var(--tt-red);border-radius:12px;margin:1rem;padding:3rem 2rem;cursor:pointer;transition:background .2s;}
+    #dropZone.dragover{background:rgba(254,44,85,.15);}
+    #label{font-size:1.3rem;pointer-events:none;}
+    #browse{color:var(--tt-red);text-decoration:underline;cursor:pointer;}
+    #resultBox{margin:1rem;text-align:center;}
+    #canvas{max-width:100%;border-radius:8px;box-shadow:0 0 20px rgba(254,44,85,.4);}
+    #actions{margin-top:1rem;}
+    button{background:var(--tt-red);color:#fff;border:none;padding:.7rem 1.4rem;border-radius:25px;font-size:1rem;margin:.5rem;cursor:pointer;transition:filter .2s;}
+    button:hover{filter:brightness(1.15);}
+    footer{text-align:center;padding:1rem;opacity:.5;font-size:.8rem;}
+  </style>
+</head>
+<body>
+<header><h1>TikTok Crop</h1><p>Drop a TikTok screenshot and get the meme, instantly.</p></header>
+<main>
+  <section id="dropZone"><input type="file" id="fileInput" accept="image/*" hidden><div id="label">Drop image here or <span id="browse">browse</span></div></section>
+  <section id="resultBox" hidden><canvas id="canvas"></canvas><div id="actions"><button id="downloadBtn">💾 Download crop</button><button id="againBtn">Crop another</button></div></section>
+  <footer><small>All processing happens in your browser – nothing is uploaded.</small></footer>
+</main>
+<script>
+/* global cv */
+let srcMat=null, cropCanvas=null;
+function onOpenCvReady(){
+  const dropZone=document.getElementById('dropZone');
+  const fileInput=document.getElementById('fileInput');
+  const canvas=document.getElementById('canvas');
+  const resultBox=document.getElementById('resultBox');
+  const downloadBtn=document.getElementById('downloadBtn');
+  const againBtn=document.getElementById('againBtn');
+  dropZone.addEventListener('click',()=>fileInput.click());
+  fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
+  dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');});
+  dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragover');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))handleFile(f);});
+  downloadBtn.addEventListener('click',()=>{cropCanvas.toBlob(blob=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tiktok-crop.png';a.click();});});
+  againBtn.addEventListener('click',()=>location.reload());
+}
+function handleFile(file){
+  const img=new Image();
+  img.src=URL.createObjectURL(file);
+  img.onload=()=>{URL.revokeObjectURL(img.src);processImage(img);};
+}
+function processImage(img){
+  const canvas=document.getElementById('canvas');
+  const ctx=canvas.getContext('2d');
+  canvas.width=img.naturalWidth; canvas.height=img.naturalHeight;
+  ctx.drawImage(img,0,0);
+  srcMat=cv.imread(canvas);
+  const gray=new cv.Mat(), blurred=new cv.Mat(), edges=new cv.Mat(), contours=new cv.MatVector(), hierarchy=new cv.Mat();
+  cv.cvtColor(srcMat,gray,cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray,blurred,new cv.Size(5,5),0);
+  cv.Canny(blurred,edges,50,150);
+  cv.findContours(edges,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+  let maxArea=0, best=null;
+  for(let i=0;i<contours.size();++i){
+    const cnt=contours.get(i);
+    const peri=cv.arcLength(cnt,true);
+    const approx=new cv.Mat();
+    cv.approxPolyDP(cnt,approx,0.02*peri,true);
+    if(approx.rows===4){
+      const area=cv.contourArea(approx);
+      if(area>maxArea){maxArea=area; best=approx;}
+    }
+    cnt.delete();
+  }
+  if(!best){alert('Could not find a clear rectangular meme. Showing full image.');showCrop(canvas);cleanup(gray,blurred,edges,contours,hierarchy);return;}
+  const rect=cv.boundingRect(best);
+  const cropped=srcMat.roi(rect);
+  cv.imshow(canvas,cropped);
+  cropCanvas=canvas;
+  cropped.delete(); best.delete();
+  cleanup(gray,blurred,edges,contours,hierarchy);
+  document.getElementById('dropZone').hidden=true;
+  document.getElementById('resultBox').hidden=false;
+}
+function cleanup(...mats){mats.forEach(m=>m.delete());}
+function showCrop(can){cropCanvas=can; document.getElementById('dropZone').hidden=true; document.getElementById('resultBox').hidden=false;}
+</script>
+<script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady()"></script>
+</body>
+</html>
