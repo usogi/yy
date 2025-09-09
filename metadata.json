@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Copy of Copy of Copy of Copy of TikCropty wk2",
+  "description": "An intelligent web application that uses AI to automatically detect and crop the main content from social media screenshots. Users can upload images, get AI-suggested crops, fine-tune the results manually, and export single images or a batch as a ZIP file.",
+  "requestFramePermissions": []
+}
